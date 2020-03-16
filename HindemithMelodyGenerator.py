@@ -1,40 +1,38 @@
 import copy
 import datetime
-import os
 import functools
-from random import shuffle
+import os
 import sys
 import time
 from pathlib import Path
-
-import unittest
-# import cProfile
+from random import shuffle
 
 import pygame.midi
 
+# import cProfile
 # from music21 import *
 
-lastUpdateTime = time.time()
+last_update_time = time.time()
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 class Config:
-    progressUpdateSeconds = 5
-    lastUpdateTime = 0
+    progress_update_seconds = 5
+    last_update_time = 0
 
-    maxMelodiesPerFinalIntervalSubset = 100
+    max_melodies_per_final_interval_subset = 100
 
-    minMelodyIntervals = 4
-    maxMelodyIntervals = 14
-    maxMelodyHeight = 19
-    maxDirectionChanges = 14
+    min_melody_intervals = 4
+    max_melody_intervals = 14
+    max_melody_height = 19
+    max_direction_changes = 14
 
-    midiA0 = 21
-    midiE3 = 52
-    midiC4 = 60
-    midiC8 = 108
+    midi_a0 = 21
+    midi_e3 = 52
+    midi_c4 = 60
+    midi_c8 = 108
 
-    vocalRanges = {
+    vocal_ranges = {
         # "name"         : ( "low", "mid", "high" ),
         "soprano": ("C4", "B4", "G5"),
         "mezzo-soprano": ("A3", "G4", "F5"),
@@ -48,45 +46,44 @@ class Config:
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 class Tone:
 
-    def __init__(self, midiNote):
-        self.midiNote = midiNote
+    def __init__(self, midi_note):
+        self.midi_note = midi_note
 
-    noteToSpelling = {
+    note_to_spelling = {
         0: "A", 1: "A♯", 2: "B", 3: "C", 4: "C♯", 5: "D",
         6: "D♯", 7: "E", 8: "F", 9: "F♯", 10: "G", 11: "G♯"}
 
-    spellingToNote = {
+    spelling_to_note = {
         "A": 0, "A♯": 1, "B♭": 1, "B": 2, "C♭": 2, "B♯": 3,
         "C": 3, "C♯": 4, "D♭": 4, "D": 5, "D♯": 6, "E♭": 6,
         "E": 7, "F♭": 7, "E♯": 8, "F": 8, "F♯": 9, "G♭": 9,
         "G": 10, "G♯": 11, "A♭": 11}
 
-    def getNoteNumber(self):    return self.midiNote - Config.midiA0
+    def get_note_number(self): return self.midi_note - Config.midi_a0
 
-    def getOctave(self):        return (self.getNoteNumber() + 12 - 3) // 12
+    def get_octave(self): return (self.get_note_number() + 12 - 3) // 12
 
-    def getSpelling(self):      return self.noteToSpelling[self.getNoteNumber() % 12]
+    def get_spelling(self): return self.note_to_spelling[self.get_note_number() % 12]
 
-    def isSharp(self):          return self.getSpelling()[-1] == '♯'
+    def is_sharp(self): return self.get_spelling()[-1] == '♯'
 
-    def getLetter(self):        return self.getSpelling()[0]
+    def get_letter(self): return self.get_spelling()[0]
 
-    def getSpellingAndOctave(self):
-        note = self.getNoteNumber()
-        octave = (note + 12 - 3) // 12
-        name = self.noteToSpelling[note % 12]
-        return name + str(self.getOctave())
+    def get_spelling_and_octave(self):
+        note = self.get_note_number()
+        name = self.note_to_spelling[note % 12]
+        return name + str(self.get_octave())
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 class Melody:
-    possibleFirstIntervals = \
+    possible_first_intervals = \
         (-7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7)
 
-    possibleLastIntervals = \
+    possible_last_intervals = \
         (-7, -4, -3, -2, -1, 1, 2, 5,)
 
-    possibleFollowingIntervals = {
+    possible_following_intervals = {
         -7: (-2, -1, 1, 2, 5, 6,),
         -6: (-2, -1, 1, 2, 4, 5, 7),
         -5: (-2, -1, 1, 2, 3, 4, 6, 7),
@@ -103,52 +100,52 @@ class Melody:
         7: (-6, -5, -2, -1, 1, 2,),
     }
 
-    perfectUp = (5, 7)
-    perfectDown = (-7, -5)
+    perfect_up = (5, 7)
+    perfect_down = (-7, -5)
 
     def __init__(self, melody):
-        if melody == None:
-            self.tones = [Tone(Config.midiE3)]  # [ Tone(Config.vocalRanges["bass"][1]) ]
+        if melody is None:
+            self.tones = [Tone(Config.midi_e3)]  # [ Tone(Config.vocalRanges["bass"][1]) ]
             self.intervals = []
         else:
             self.tones = copy.deepcopy(melody.tones)
             self.intervals = copy.deepcopy(melody.intervals)
 
-    def pushInterval(self, interval):
+    def push_interval(self, interval):
         self.intervals.append(interval)
-        self.tones.append(Tone(self.tones[-1].midiNote + interval))
+        self.tones.append(Tone(self.tones[-1].midi_note + interval))
 
-    def popInterval(self):
+    def pop_interval(self):
         self.tones.pop()
         return self.intervals.pop()
 
-    def melodyHeight(self):
-        midiTones = [x.midiNote for x in self.tones]
-        maxTone = max(midiTones)
-        minTone = min(midiTones)
-        return maxTone - minTone
+    def melody_height(self):
+        midi_tones = [x.midi_note for x in self.tones]
+        max_tone = max(midi_tones)
+        min_tone = min(midi_tones)
+        return max_tone - min_tone
 
-    def numTones(self):
+    def num_tones(self):
         return len(self.tones)
 
-    def numIntervals(self):
+    def num_intervals(self):
         return len(self.intervals)
 
-    def numDirectionChanges(self):
-        directionChanges = 0
+    def num_direction_changes(self):
+        direction_changes = 0
         positive = self.intervals[0] > 0
         for interval in self.intervals:
-            if positive == True and interval < 0 or \
-                    positive == False and interval > 0:
-                directionChanges += 1
+            if positive is True and interval < 0 or \
+                    positive is False and interval > 0:
+                direction_changes += 1
                 positive = not positive
-        return directionChanges
+        return direction_changes
 
-    def hasTooLargeARange(self):
-        return self.melodyHeight() > Config.maxMelodyHeight
+    def has_too_large_a_range(self):
+        return self.melody_height() > Config.max_melody_height
 
-    def hasTooManyInSameDirection(self):
-        if self.numIntervals() < 5:
+    def has_too_many_in_same_direction(self):
+        if self.num_intervals() < 5:
             return False
         direction = (self.intervals[-5] > 0)
         for interval in self.intervals[-4:]:
@@ -156,34 +153,34 @@ class Melody:
                 return False
         return True
 
-    def hasDuplicateTones(self):
+    def has_duplicate_tones(self):
         # ignore melody-final tones
-        if self.tones[0].midiNote == self.tones[-1].midiNote:
+        if self.tones[0].midi_note == self.tones[-1].midi_note:
             return False
-        for existingTone in self.tones[1:-1]:
-            if existingTone.midiNote == self.tones[-1].midiNote:
+        for existing_tone in self.tones[1:-1]:
+            if existing_tone.midi_note == self.tones[-1].midi_note:
                 return True
         return False
 
-    def hasDuplicateIntervals(self):
-        addedInterval = self.intervals[-1];
-        for existingInterval in self.intervals[0:-2]:
-            if existingInterval == addedInterval:
+    def has_duplicate_intervals(self):
+        added_interval = self.intervals[-1]
+        for existing_interval in self.intervals[0:-2]:
+            if existing_interval == added_interval:
                 return True
         return False
 
-    def hasThreeSequencesOfTwo(self):
+    def has_three_sequences_of_two(self):
         # 3 repeats of same two-tone interval
-        sequenceCounts = {}
+        sequence_counts = {}
         for interval in self.intervals:
-            newCount = sequenceCounts.get(interval, 0) + 1
-            if newCount > 2:
+            new_count = sequence_counts.get(interval, 0) + 1
+            if new_count > 2:
                 return True
-            sequenceCounts[interval] = newCount
+            sequence_counts[interval] = new_count
         return False
 
-    def hasTwoSequencesOfThree(self):
-        length = self.numIntervals()
+    def has_two_sequences_of_three(self):
+        length = self.num_intervals()
         if length < 4:
             return False
         # 2 repeats of longer non-overlapping sequences
@@ -199,97 +196,93 @@ class Melody:
             pos += 1
         return False
 
-    def hasUnamelioratedTritone(self):
-        ints = self.numIntervals()
+    def has_unameliorated_tritone(self):
+        ints = self.num_intervals()
         if ints < 2:
             return False
         elif ints == 2:
             if self.intervals[0] == -6:
-                if self.intervals[1] not in self.perfectUp:
+                if self.intervals[1] not in self.perfect_up:
                     return True
             elif self.intervals[0] == 6:
-                if self.intervals[1] not in self.perfectDown:
+                if self.intervals[1] not in self.perfect_down:
                     return True
         else:
             if self.intervals[-2] == -6:
-                if self.intervals[-3] not in self.perfectUp and \
-                        self.intervals[-1] not in self.perfectUp:
+                if self.intervals[-3] not in self.perfect_up and \
+                        self.intervals[-1] not in self.perfect_up:
                     return True
             elif self.intervals[-2] == 6:
-                if self.intervals[-3] not in self.perfectDown and \
-                        self.intervals[-1] not in self.perfectDown:
+                if self.intervals[-3] not in self.perfect_down and \
+                        self.intervals[-1] not in self.perfect_down:
                     return True
         return False
 
-    def hasTooManyDirectionChanges(self):
-        return self.numDirectionChanges() > Config.maxDirectionChanges
+    def has_too_many_direction_changes(self):
+        return self.num_direction_changes() > Config.max_direction_changes
 
     # def isComplete(self):
-    #    return self.tones[0].midiNote == self.tones[-1].midiNote
+    #    return self.tones[0].midi_note == self.tones[-1].midi_note
 
-    def isIllegalMelodyForHindemithChapterOne(self):
+    def is_illegal_melody_for_hindemith_chapter_one(self):
         # Some tests assume we just need to check the
         # most recently appended note
 
         if len(self.intervals) < 2:
             return False
 
-        closing = (self.tones[0].midiNote == self.tones[-1].midiNote)
+        closing = (self.tones[0].midi_note == self.tones[-1].midi_note)
 
-        if closing and len(self.intervals) < Config.minMelodyIntervals:
+        if closing and len(self.intervals) < Config.min_melody_intervals:
             return True
 
-        if self.hasDuplicateTones() or \
-                self.hasDuplicateIntervals() or \
-                self.hasUnamelioratedTritone() or \
-                self.hasTooLargeARange() or \
-                self.hasTooManyInSameDirection() or \
-                self.hasTwoSequencesOfThree() or \
-                self.hasThreeSequencesOfTwo() or \
-                self.hasTooManyDirectionChanges() \
-                :
+        if (self.has_duplicate_tones() or
+                self.has_duplicate_intervals() or
+                self.has_unameliorated_tritone() or
+                self.has_too_large_a_range() or
+                self.has_too_many_in_same_direction() or
+                self.has_two_sequences_of_three() or
+                self.has_three_sequences_of_two() or
+                self.has_too_many_direction_changes()
+        ):
             return True
 
         if closing:
-            if self.intervals[-1] not in self.possibleLastIntervals:
+            if self.intervals[-1] not in self.possible_last_intervals:
                 return True
 
         return False
 
-    def intervalsString(self):
+    def intervals_string(self):
         strings = []
         for interval in self.intervals:
             strings.append(str(interval))
         return " ".join(strings)
 
-    def tonesString(self):
+    def tones_string(self):
         strs = []
         for tone in self.tones:
-            spelling = tone.getSpelling()  # tone.getSpellingAndOctave()
+            spelling = tone.get_spelling()  # tone.getSpellingAndOctave()
             strs.append(spelling)
         return " ".join(strs)
 
-    def getName(self):
-        return '{0}  /  {1}'.format(self.tonesString(), self.intervalsString())
+    def get_name(self):
+        return '{0}  /  {1}'.format(self.tones_string(), self.intervals_string())
 
     def print(self):
-        strs = []
-        strs.append(self.tonesString())
-        strs.append(" == ")
-        strs.append(self.intervalsString())
-        print(self.getName())
+        print(self.get_name())
 
-    def playMidi(self, player, duration, pause):
-        print(self.intervalsString(), " -- ", end='')
+    def play_midi(self, player, duration, pause):
+        print(self.intervals_string(), " -- ", end='')
 
         # music21Notes = []
         for tone in self.tones:
-            spelling = tone.getSpellingAndOctave()
+            spelling = tone.get_spelling_and_octave()
             print(spelling, end=' ')
             # music21Notes.append(note.Note(spelling))
-            player.noteOn(tone.midiNote, 127)
+            player.noteOn(tone.midi_note, 127)
             time.sleep(duration)
-            player.noteOff(tone.midiNote, 127)
+            player.noteOff(tone.midi_note, 127)
         print()
 
         time.sleep(pause)
@@ -298,156 +291,146 @@ class Melody:
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 class MelodiesSubset:
 
-    def __init__(self, numDirectionChanges, melodySize):
-        self.melodySize = melodySize
-        self.numDirectionChanges = numDirectionChanges
-        self.melodies = {x: [] for x in Melody.possibleLastIntervals}
+    def __init__(self, num_direction_changes, melody_size):
+        self.melody_size = melody_size
+        self.num_direction_changes = num_direction_changes
+        self.melodies = {x: [] for x in Melody.possible_last_intervals}
 
-    def getName(self):
-        return "Melodies with {0} direction changes and length {1}".format( \
-            self.numDirectionChanges, self.melodySize)
+    def get_name(self):
+        return "Melodies with {0} direction changes and length {1}".format(
+            self.num_direction_changes, self.melody_size)
 
     def append(self, melody):
         self.melodies[melody.intervals[-1]].append(melody)
 
-    def numMelodies(self):
+    def num_melodies(self):
         lengths = [len(z) for z in self.melodies.values()]
         return functools.reduce(lambda x, y: x + y, lengths)
 
-    def getAllMelodiesUpToMaxForGroup(self):
-        allMelodies = []
-        for lastInterval in Melody.possibleLastIntervals:
-            melodies = self.melodies[lastInterval][0:Config.maxMelodiesPerFinalIntervalSubset]
-            allMelodies.extend(melodies)
-        return allMelodies
+    def get_all_melodies_up_to_max_for_group(self):
+        all_melodies = []
+        for last_interval in Melody.possible_last_intervals:
+            melodies = self.melodies[last_interval][0:Config.max_melodies_per_final_interval_subset]
+            all_melodies.extend(melodies)
+        return all_melodies
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 class MelodySets:
-    melodyCount = 0
+    melody_count = 0
 
     def __init__(self):
-        self.directionChangesSet = []
-        for altCount in range(0, Config.maxMelodyIntervals + 2):
-            lengthSet = []
-            self.directionChangesSet.append(lengthSet)
-            for lengthCount in range(0, Config.maxMelodyIntervals + 2):
-                lengthSet.append(MelodiesSubset(altCount, lengthCount))
+        self.direction_changes_set = []
+        for alt_count in range(0, Config.max_melody_intervals + 2):
+            length_set = []
+            self.direction_changes_set.append(length_set)
+            for length_count in range(0, Config.max_melody_intervals + 2):
+                length_set.append(MelodiesSubset(alt_count, length_count))
 
-    def saveMelody(self, melody):
+    def save_melody(self, melody):
 
-        self.melodyCount += 1
+        self.melody_count += 1
 
         melody = Melody(melody)
-        midiTones = [x.midiNote for x in melody.tones]
-        maxTone = max(midiTones)
-        minTone = min(midiTones)
-        midTone = (maxTone + minTone) // 2
-        offset = Config.midiE3 - midTone
+        midi_tones = [x.midi_note for x in melody.tones]
+        max_tone = max(midi_tones)
+        min_tone = min(midi_tones)
+        mid_tone = (max_tone + min_tone) // 2
+        offset = Config.midi_e3 - mid_tone
 
         i = 0
-        while i < melody.numTones():
-            melody.tones[i].midiNote += offset
+        while i < melody.num_tones():
+            melody.tones[i].midi_note += offset
             i += 1
 
-        length = melody.numTones()
+        length = melody.num_tones()
 
-        directionChanges = melody.numDirectionChanges()
+        direction_changes = melody.num_direction_changes()
 
-        melodySet = self.directionChangesSet[directionChanges][length]
-        melodySet.append(melody)
+        melody_set = self.direction_changes_set[direction_changes][length]
+        melody_set.append(melody)
 
-        currentTime = time.time()
+        current_time = time.time()
 
-        global lastUpdateTime
-        if (currentTime - lastUpdateTime) > Config.progressUpdateSeconds:
-            self.printSummary()
+        global last_update_time
+        if (current_time - last_update_time) > Config.progress_update_seconds:
+            self.print_summary()
             print()
             melody.print()
-            lastUpdateTime = currentTime
+            last_update_time = current_time
 
-    def extendMelody(self, melody, lengthRemaining):
+    def extend_melody(self, melody, length_remaining):
 
-        previousInterval = melody.intervals[-1]
-        for interval in Melody.possibleFollowingIntervals[previousInterval]:
-            melody.pushInterval(interval)
-            if not melody.isIllegalMelodyForHindemithChapterOne():
-                if melody.tones[0].midiNote == melody.tones[-1].midiNote:
-                    self.saveMelody(melody)
-                elif lengthRemaining > 0:
-                    self.extendMelody(melody, lengthRemaining - 1)
+        previous_interval = melody.intervals[-1]
+        for interval in Melody.possible_following_intervals[previous_interval]:
+            melody.push_interval(interval)
+            if not melody.is_illegal_melody_for_hindemith_chapter_one():
+                if melody.tones[0].midi_note == melody.tones[-1].midi_note:
+                    self.save_melody(melody)
+                elif length_remaining > 0:
+                    self.extend_melody(melody, length_remaining - 1)
 
-            melody.popInterval()
+            melody.pop_interval()
 
-    def generateMelodies(self, length):
-        for interval in Melody.possibleFirstIntervals:
+    def generate_melodies(self, length):
+        for interval in Melody.possible_first_intervals:
             melody = Melody(None)
-            melody.pushInterval(interval)
-            self.extendMelody(melody, length - 1)
-        self.shuffleIfTooMany()
-        self.printSummary()
+            melody.push_interval(interval)
+            self.extend_melody(melody, length - 1)
+        self.shuffle_if_too_many()
+        self.print_summary()
 
-    def shuffleIfTooMany(self):
-        for alternationSet in self.directionChangesSet:
-            for lengthSet in alternationSet:
-                for finalInterval in Melody.possibleLastIntervals:
-                    melodies = lengthSet.melodies[finalInterval]
-                    if len(melodies) > Config.maxMelodiesPerFinalIntervalSubset:
+    def shuffle_if_too_many(self):
+        for alternation_set in self.direction_changes_set:
+            for length_set in alternation_set:
+                for final_interval in Melody.possible_last_intervals:
+                    melodies = length_set.melodies[final_interval]
+                    if len(melodies) > Config.max_melodies_per_final_interval_subset:
                         shuffle(melodies)
 
-    # def printPrefixes(self):
-    #    self.printSummary()
-    #    for melodySet in self.melodies:
-    #        for melody in melodySet:
+    # def print_prefixes(self):
+    #    self.print_summary()
+    #    for melody_set in self.melodies:
+    #        for melody in melody_set:
     #            melody.print()
 
-    def printSummary(self):
+    def print_summary(self):
         print()
-        totalMelodies = 0
-        for i in range(0, len(self.directionChangesSet)):
-            directionsSet = self.directionChangesSet[i]
-            for j in range(0, len(directionsSet)):
-                lengthSet = directionsSet[j]
-                numMelodies = lengthSet.numMelodies()
-                if numMelodies > 0:
-                    print(numMelodies, " melodies of direction changes ", i, \
-                          " and size ", j)
-        print("Total: ", self.melodyCount)
+        for i in range(0, len(self.direction_changes_set)):
+            directions_set = self.direction_changes_set[i]
+            for j in range(0, len(directions_set)):
+                length_set = directions_set[j]
+                num_melodies = length_set.num_melodies()
+                if num_melodies > 0:
+                    print(num_melodies, " melodies of direction changes ", i, " and size ", j)
+        print("Total: ", self.melody_count)
 
-    def setTrue(val):
-        val = True
-
-    def setFalse(val):
-        val = False
-
-    def playMelodies(self):
-        self.printSummary()
+    def play_melodies(self):
+        self.print_summary()
 
         pygame.midi.init()
         player = pygame.midi.Output(0)
         player.setInstrument(0)
 
-        allMelodies = []
-        for directionsSet in self.melodies:
-            for lengthSet in directionsSet:
-                allMelodies.append(lengthSet.getAllMelodies())
+        all_melodies = []
+        for directions_set in self.melodies:
+            for length_set in directions_set:
+                all_melodies.append(length_set.get_all__melodies())
 
-        repeat = True
-
-        for melody in allMelodies:
-            melody.playMidi(player, 0.25, 1)
+        for melody in all_melodies:
+            melody.play_midi(player, 0.25, 1)
             # melody.playMidi(player, 0.325, 1.5)
             # melody.playMidi(player, 0.4, 3)
 
         del player
         pygame.midi.quit()
 
-    def playOneMelody(self, melody):
+    def play_one_melody(self, melody):
         pygame.midi.init()
         player = pygame.midi.Output(0)
         player.setInstrument(0)
 
-        melody.playMidi(player, 0.25, 2)
+        melody.play_midi(player, 0.25, 2)
 
         del player
         pygame.midi.quit()
@@ -491,143 +474,139 @@ class MelodySets:
 #                           getEndBarline()
 #                           getMeasureEnd()
 class MusicXmlExporter:
-    docWidth = 1200 - 141 - 70
-    firstMeasureExtraWidth = 165 - 95
-    newSystemExtraWidth = 165 - 95
-    multiRestExtraWidth = 145 - 95
+    doc_width = 1200 - 141 - 70
+    first_measure_extra_width = 165 - 95
+    new_system_extra_width = 165 - 95
+    multi_rest_extra_width = 145 - 95
 
-    def exportMelodySets(self, melodySets):
-        for altCount in range(0, Config.maxMelodyIntervals + 2):
-            alternationSet = melodySets.directionChangesSet[altCount]
-            for lengthCount in range(0, Config.maxMelodyIntervals + 2):
-                melodySet = alternationSet[lengthCount]
-                self.exportMelodies(melodySet)
+    def export_melody_sets(self, melody_sets):
+        for alt_count in range(0, Config.max_melody_intervals + 2):
+            alternation_set = melody_sets.direction_changes_set[alt_count]
+            for length_count in range(0, Config.max_melody_intervals + 2):
+                melody_set = alternation_set[length_count]
+                self.export_melodies(melody_set)
 
-    def exportMelodies(self, melodySubset):
-        if melodySubset.numMelodies() > 0:
-            xmlDoc = []
-            name = melodySubset.getName()
+    def export_melodies(self, melody_subset):
+        if melody_subset.num_melodies() > 0:
+            xml_doc = []
+            name = melody_subset.get_name()
 
-            self.appendFileHeader(xmlDoc, melodySubset, name)
-            self.appendMelodies(xmlDoc, melodySubset)
-            self.appendFileFooter(xmlDoc)
+            self.append_file_header(xml_doc, name)
+            self.append_melodies(xml_doc, melody_subset)
+            self.append_file_footer(xml_doc)
 
-            self.writeXmlDoc(xmlDoc, name)
+            self.write_xml_doc(xml_doc, name)
 
-    def appendFileHeader(self, doc, melodies, name):
+    def append_file_header(self, doc, name):
         title = 'Python-Generated Hindemith-Compliant Melodies'
         composer = 'Jodawi'
-        copyrightNotice = 'Public Domain'
+        copyright_notice = 'Public Domain'
         subtitle = name
         software = os.path.basename(sys.argv[0])
         today = datetime.date.today().isoformat()
 
-        header = self.fileHeader.format( \
-            TITLE=title, \
-            COMPOSER=composer, \
-            COPYRIGHT=copyrightNotice, \
-            SUBTITLE=subtitle, \
-            SOFTWARE=software, \
-            DATE=today, \
-            )
+        header = self.file_header.format(
+            TITLE=title,
+            COMPOSER=composer,
+            COPYRIGHT=copyright_notice,
+            SUBTITLE=subtitle,
+            SOFTWARE=software,
+            DATE=today,
+        )
         doc.append(header)
 
-    def appendFileFooter(self, doc):
-        doc.append(self.fileFooter)
+    def append_file_footer(self, doc):
+        doc.append(self.file_footer)
 
-    def appendMelodies(self, doc, melodySet):
-        melodyCount = 0
-        measureNumber = 0
-        for melody in melodySet.getAllMelodiesUpToMaxForGroup():
-            melodyCount += 1
-            name = '{0}.{1}.{2}:  {3}'.format( \
-                melodySet.numDirectionChanges, \
-                melodySet.melodySize, \
-                melodyCount, \
-                melody.getName())
-            measureNumber += self.appendMelody( \
-                doc, melody, name, melodyCount, measureNumber)
+    def append_melodies(self, doc, melody_set):
+        melody_count = 0
+        measure_number = 0
+        for melody in melody_set.get_all_melodies_up_to_max_for_group():
+            melody_count += 1
+            name = '{0}.{1}.{2}:  {3}'.format(
+                melody_set.num_direction_changes,
+                melody_set.melody_size,
+                melody_count,
+                melody.get_name())
+            measure_number += self.append_melody(doc, melody, name, melody_count, measure_number)
 
-    def getMelodyMeasureWidth(self, melody):
-        shrunken = self.docWidth \
-                   - self.firstMeasureExtraWidth \
-                   - self.multiRestExtraWidth
+    def get_melody_measure_width(self, melody):
+        shrunken = self.doc_width \
+                   - self.first_measure_extra_width \
+                   - self.multi_rest_extra_width
 
-        return shrunken // (melody.numTones() + 1)
+        return shrunken // (melody.num_tones() + 1)
 
-    def getRestMeasureWidth(self, melody):
-        return self.docWidth - self.firstMeasureExtraWidth - \
-               self.getMelodyMeasureWidth(melody) * melody.numTones()
+    def get_rest_measure_width(self, melody):
+        return self.doc_width - self.first_measure_extra_width - \
+               self.get_melody_measure_width(melody) * melody.num_tones()
 
-    def writeXmlDoc(self, doc, name):
-        #TODO: create folder
+    def write_xml_doc(self, doc, name):
+        # TODO: create folder
         data_folder = Path("out/")
 
-        fileName = data_folder / (name + '.xml')
+        file_name = data_folder / (name + '.xml')
 
-        with open(fileName, mode='w', encoding="utf8") as f:
+        with open(file_name, mode='w', encoding="utf8") as f:
             for item in doc:
                 f.write(item)
-            print("Wrote ", fileName)
+            print("Wrote ", file_name)
 
-    def appendMelody(self, doc, melody, name, melodyNumber, measureNumber):
+    def append_melody(self, doc, melody, name, melody_number, measure_number):
 
-        baseWidth = self.getMelodyMeasureWidth(melody)
+        base_width = self.get_melody_measure_width(melody)
 
         for i in range(len(melody.tones)):
-            width = baseWidth
-            defaultX = 13
+            width = base_width
+            default_x = 13
             if i == 0:
-                width += self.firstMeasureExtraWidth
-                defaultX += self.firstMeasureExtraWidth
-            measureNumber += 1
-            doc.append(self.measureStart.format( \
-                MEASURE_NUMBER=measureNumber, \
+                width += self.first_measure_extra_width
+                default_x += self.first_measure_extra_width
+            measure_number += 1
+            doc.append(self.measure_start.format(
+                MEASURE_NUMBER=measure_number,
                 MEASURE_WIDTH=width))
 
-            if measureNumber == 1:
-                doc.append(self.extraForFirstMeasure)
-            elif melodyNumber != 1 and i == 0:
-                doc.append(self.newSystem)
+            if measure_number == 1:
+                doc.append(self.extra_for_first_measure)
+            elif melody_number != 1 and i == 0:
+                doc.append(self.new_system)
 
             if i == 0:
-                doc.append(self.melodyTitle.format( \
-                    MELODY_TITLE=name))
+                doc.append(self.melody_title.format(MELODY_TITLE=name))
 
             tone = melody.tones[i]
-            noteStr = ''
-            if tone.isSharp():
-                noteStr = self.noteSharp( \
-                    tone.getLetter(), \
-                    tone.getOctave(), \
-                    defaultX)
+            if tone.is_sharp():
+                note_str = self.note_sharp(
+                    tone.get_letter(),
+                    tone.get_octave(),
+                    default_x)
             else:
-                noteStr = self.noteNatural( \
-                    tone.getLetter(), \
-                    tone.getOctave(), \
-                    defaultX)
-            doc.append(noteStr)
+                note_str = self.note_natural(
+                    tone.get_letter(),
+                    tone.get_octave(),
+                    default_x)
+            doc.append(note_str)
 
-            doc.append(self.measureEnd)
+            doc.append(self.measure_end)
 
-        restStr = ''
         for i in range(4):
-            measureNumber += 1
+            measure_number += 1
             width = 0
-            restStr = self.rest
+            rest_str = self.rest
             if i == 0:
-                width = self.getRestMeasureWidth(melody)
-                restStr = self.multipleRest + self.rest
+                width = self.get_rest_measure_width(melody)
+                rest_str = self.multiple_rest + self.rest
 
-            doc.append(self.measureStart.format( \
-                MEASURE_NUMBER=measureNumber, \
+            doc.append(self.measure_start.format(
+                MEASURE_NUMBER=measure_number,
                 MEASURE_WIDTH=width))
-            doc.append(restStr)
+            doc.append(rest_str)
             if i == 3:
-                doc.append(self.endBarline)
-            doc.append(self.measureEnd)
+                doc.append(self.end_barline)
+            doc.append(self.measure_end)
 
-        return measureNumber
+        return measure_number
 
     measure = '''\
 {MEASURE_START_WITH_APPROPRIATE_WIDTH}\
@@ -640,7 +619,7 @@ class MusicXmlExporter:
 {EXTRA_FOR_END_BARLINE}\
 {MEASURE_END}'''
 
-    fileHeader = '''\
+    file_header = '''\
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.0 \
 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
@@ -742,10 +721,10 @@ justify="center" valign="top">{SUBTITLE}</credit-words>
   <!--=========================================================-->
   <part id="P1">'''
 
-    measureStart = '''
+    measure_start = '''
     <measure number="{MEASURE_NUMBER}" width="{MEASURE_WIDTH}">'''
 
-    extraForFirstMeasure = '''
+    extra_for_first_measure = '''
       <print>
         <system-layout>
           <top-system-distance>174</top-system-distance>
@@ -769,7 +748,7 @@ justify="center" valign="top">{SUBTITLE}</credit-words>
       </attributes>
       <sound tempo="640"/>'''
 
-    melodyTitle = '''
+    melody_title = '''
       <direction placement="above">
         <direction-type>
           <words default-y="38" relative-x="-10" \
@@ -777,33 +756,31 @@ valign="top">{MELODY_TITLE}</words>
         </direction-type>
       </direction>'''
 
-    optionalAlter = '''\
+    optional_alter = '''\
           <alter>{ALTER}</alter>
 '''
 
-    optionalAccidental = '''\
+    optional_accidental = '''\
         <accidental>{ACCIDENTAL}</accidental>
 '''
 
-    def noteSharp(self, step, octave, defaultX):
-        alter = self.optionalAlter.format( \
-            ALTER=1)
-        accidental = self.optionalAccidental.format( \
-            ACCIDENTAL="sharp")
-        return self.note(step, octave, alter, accidental, defaultX)
+    def note_sharp(self, step, octave, default_x):
+        alter = self.optional_alter.format(ALTER=1)
+        accidental = self.optional_accidental.format(ACCIDENTAL="sharp")
+        return self.note(step, octave, alter, accidental, default_x)
 
-    def noteNatural(self, step, octave, defaultX):
-        return self.note(step, octave, '', '', defaultX)
+    def note_natural(self, step, octave, default_x):
+        return self.note(step, octave, '', '', default_x)
 
-    def note(self, step, octave, alter, accidental, defaultX):
-        return self.musicalNote.format( \
-            STEP=step, \
-            OCTAVE=octave, \
-            NOTE_DEFAULT_X=defaultX, \
-            OPTIONAL_ALTER=alter, \
+    def note(self, step, octave, alter, accidental, default_x):
+        return self.musical_note.format(
+            STEP=step,
+            OCTAVE=octave,
+            NOTE_DEFAULT_X=default_x,
+            OPTIONAL_ALTER=alter,
             OPTIONAL_ACCIDENTAL=accidental)
 
-    musicalNote = '''
+    musical_note = '''
       <note default-x="{NOTE_DEFAULT_X}">
         <pitch>
           <step>{STEP}</step>
@@ -816,11 +793,11 @@ valign="top">{MELODY_TITLE}</words>
 {OPTIONAL_ACCIDENTAL}\
       </note>'''
 
-    measureEnd = '''
+    measure_end = '''
     </measure>
     <!--=======================================================-->'''
 
-    multipleRest = '''
+    multiple_rest = '''
       <attributes>
         <measure-style>
           <multiple-rest>4</multiple-rest>
@@ -835,19 +812,19 @@ valign="top">{MELODY_TITLE}</words>
         <voice>1</voice>
       </note>'''
 
-    endBarline = '''
+    end_barline = '''
       <barline location="right">
         <bar-style>light-heavy</bar-style>
       </barline>'''
 
-    newSystem = '''
+    new_system = '''
       <print new-system="yes">
         <system-layout>
           <system-distance>79</system-distance>
         </system-layout>
       </print>'''
 
-    fileFooter = '''
+    file_footer = '''
   </part>
   <!--=========================================================-->
 </score-partwise>
@@ -856,11 +833,11 @@ valign="top">{MELODY_TITLE}</words>
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def main():
-    melodySets = MelodySets()
-    melodySets.generateMelodies(Config.maxMelodyIntervals)
+    melody_sets = MelodySets()
+    melody_sets.generate_melodies(Config.max_melody_intervals)
 
     exporter = MusicXmlExporter()
-    exporter.exportMelodySets(melodySets)
+    exporter.export_melody_sets(melody_sets)
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
